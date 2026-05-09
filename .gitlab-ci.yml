@@ -31,6 +31,8 @@ build-airflow-image:
   stage: build
   image: docker:24.0.7
   script:
+    - ls -l /var/run/docker.sock
+    - docker version
     - docker build -t "$AIRFLOW_IMAGE_NAME" .
   rules:
     - if: '$CI_COMMIT_BRANCH =~ /^feature\//'
