@@ -6,6 +6,8 @@
 
 В ветке `hw3` добавлен GitLab CI/CD pipeline для проверки, сборки и деплоя стенда Airflow + Spark.
 
+Ссылка на GitLab: https://gitlab.com/tix_pix/cicd-course/-/tree/hw3?ref_type=heads
+
 Состав CI/CD:
 
 - `.gitlab-ci.yml` описывает pipeline из стадий `test`, `build`, `deploy`.
