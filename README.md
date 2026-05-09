@@ -2,6 +2,42 @@
 
 Репозиторий для лабораторных работ по DevOps.
 
+## ЛР 3. Gitlab CI/CD
+
+В ветке `hw3` добавлен GitLab CI/CD pipeline для проверки, сборки и деплоя стенда Airflow + Spark.
+
+Состав CI/CD:
+
+- `.gitlab-ci.yml` описывает pipeline из стадий `test`, `build`, `deploy`.
+- `test-project-structure` запускается всегда во всех ветках и проверяет наличие `dags/`, `spark/`, ключевых файлов и валидность `docker compose config`.
+- `build-airflow-image` собирает Docker-образ `cicd-hw-airflow:2.7.1`.
+- `deploy-airflow-spark` автоматически выполняет `docker compose up -d` только для веток `main`, `master` и `develop`.
+- Для веток `feature/*` build job доступен только вручную и не стартует автоматически.
+- Все job требуют GitLab Runner с тегом `devops-runner`.
+- `clear-deployment` является ручной job для остановки контейнеров через `docker compose rm -sf`.
+
+### Настройка GitLab Runner
+
+Runner должен быть зарегистрирован для проекта с тегом:
+
+```text
+devops-runner
+```
+
+В настройках runner нужно разрешить запуск tagged jobs. Для работы Docker-команд runner должен иметь доступ к Docker socket:
+
+```text
+/var/run/docker.sock:/var/run/docker.sock
+```
+
+В `/etc/gitlab-runner/config.toml` у Docker runner должен быть volume:
+
+```toml
+volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/cache"]
+```
+
+После push ветки pipeline можно проверить в GitLab: `CI/CD -> Pipelines`.
+
 ## ЛР 2. Airflow + Spark
 
 В ветке `hw2` подготовлен локальный деплой Apache Airflow и Spark Standalone через Docker Compose.

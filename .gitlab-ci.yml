@@ -1,0 +1,58 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  AIRFLOW_IMAGE_NAME: cicd-hw-airflow:2.7.1
+  AIRFLOW_UID: "50000"
+
+default:
+  tags:
+    - devops-runner
+
+test-project-structure:
+  stage: test
+  image: docker:24.0.7
+  script:
+    - test -d dags
+    - test -d spark
+    - test -f Dockerfile
+    - test -f docker-compose.yml
+    - test -f dags/spark_sales_metrics_dag.py
+    - test -f spark/sales_metrics_spark_job.py
+    - docker compose config --quiet
+  rules:
+    - when: always
+
+build-airflow-image:
+  stage: build
+  image: docker:24.0.7
+  script:
+    - docker build -t "$AIRFLOW_IMAGE_NAME" .
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^feature\//'
+      when: manual
+      allow_failure: true
+    - when: on_success
+
+deploy-airflow-spark:
+  stage: deploy
+  image: docker:24.0.7
+  script:
+    - docker image inspect "$AIRFLOW_IMAGE_NAME"
+    - docker compose up -d
+    - docker compose ps
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "develop"'
+      when: on_success
+    - when: never
+
+clear-deployment:
+  stage: deploy
+  image: docker:24.0.7
+  script:
+    - docker compose rm -sf
+  rules:
+    - when: manual
+      allow_failure: true
