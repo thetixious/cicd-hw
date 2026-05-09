@@ -2,27 +2,30 @@
 
 Репозиторий для лабораторных работ по DevOps.
 
-## ЛР 1. Airflow + docker compose
+## ЛР 2. Airflow + Spark
 
-В ветке `hw1` подготовлен локальный деплой Apache Airflow через Docker Compose.
+В ветке `hw2` подготовлен локальный деплой Apache Airflow и Spark Standalone через Docker Compose.
 
 Состав решения:
 
-- `Dockerfile` собирает кастомный образ на базе `apache/airflow:2.7.1` и копирует DAG в рабочую директорию Airflow `/opt/airflow`.
-- `docker-compose.yml` поднимает `postgres`, `airflow-init`, `airflow-webserver` и `airflow-scheduler`.
-- `dags/sales_metrics_dag.py` содержит DAG `daily_sales_metrics`.
+- `Dockerfile` собирает кастомный образ на базе `apache/airflow:2.7.1`, устанавливает Java, `procps`, Spark provider и `pyspark`.
+- `docker-compose.yml` поднимает `postgres`, `spark-master`, `spark-worker`, `airflow-init`, `airflow-webserver` и `airflow-scheduler`.
+- `dags/spark_sales_metrics_dag.py` содержит DAG `spark_sales_metrics`, который запускает Spark job через `SparkSubmitOperator`.
+- `spark/sales_metrics_spark_job.py` содержит PySpark job с использованием `SparkSession`.
 - `reports/` используется Airflow для сохранения markdown-отчетов по результатам запуска DAG.
 - `logs/` используется Airflow для логов выполнения задач.
+- `CHANGES.md` содержит изменения по сравнению с ЛР 1.
 
 ### Что делает DAG
 
-`daily_sales_metrics` состоит из четырех задач:
+`spark_sales_metrics` состоит из одной Airflow-задачи `run_sales_metrics_spark_job`, которая отправляет Python-приложение в Spark-кластер.
 
-1. `extract_orders` формирует тестовый набор заказов от логической даты запуска.
-2. `calculate_metrics` считает выручку, конверсию, средний чек, среднее количество товаров и лучший продукт.
-3. `check_targets` проверяет рассчитанные метрики относительно целевых значений.
-4. `write_report` сохраняет отчет в `/opt/airflow/reports`, который проброшен в локальную директорию `reports`.
+Spark job:
 
+1. Создает `SparkSession` с master `spark://spark-master:7077`.
+2. Формирует тестовый набор заказов за логическую дату запуска.
+3. Считает метрики продаж средствами `pyspark`: выручку, конверсию, средний чек, лучший продукт и выручку по продуктам.
+4. Сохраняет markdown-отчет в `/opt/airflow/reports`, который проброшен в локальную директорию `reports`.
 
 ### Локальный запуск
 
@@ -38,7 +41,7 @@ echo "AIRFLOW_UID=$(id -u)" > .env
 docker compose up -d --build
 ```
 
-После старта должны работать два контейнера Airflow и один контейнер Postgres:
+После старта должны работать два контейнера Airflow, один контейнер Postgres и два контейнера Spark:
 
 ```bash
 docker compose ps
@@ -50,6 +53,12 @@ Airflow UI будет доступен по адресу:
 http://localhost:8080/
 ```
 
+Spark Master UI будет доступен по адресу:
+
+```text
+http://localhost:4040/
+```
+
 Креды по умолчанию:
 
 ```text
@@ -57,7 +66,19 @@ login: airflow
 password: airflow
 ```
 
-В UI включите DAG `daily_sales_metrics` и запустите его вручную или дождитесь планового запуска. После успешного выполнения отчет появится в директории `reports`.
+Подключение Airflow к Spark создается автоматически через переменную окружения. В URI host закодирован, чтобы внутри Airflow connection он отображался как `spark://spark-master`, а port как `7077`:
+
+```text
+AIRFLOW_CONN_SPARK_LOCAL=spark://spark%3A%2F%2Fspark-master:7077
+```
+
+В UI включите DAG `spark_sales_metrics` и запустите его вручную или дождитесь планового запуска. После успешного выполнения отчет появится в директории `reports`, а в Spark UI будет виден воркер и выполненное приложение.
+
+Запустить DAG из консоли можно так:
+
+```bash
+docker compose exec airflow-scheduler airflow dags test spark_sales_metrics 2026-05-09
+```
 
 Остановить стенд:
 
