@@ -17,6 +17,7 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/reports:/opt/airflow/reports
     - ${AIRFLOW_PROJ_DIR:-.}/spark:/opt/airflow/spark
+    - ${AIRFLOW_PROJ_DIR:-.}/spark-events:/opt/airflow/spark-events
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     postgres:
@@ -48,24 +49,85 @@ services:
   spark-master:
     container_name: spark-master
     image: apache/spark:3.5.0
+    environment:
+      SPARK_MASTER_OPTS: "-Dspark.metrics.conf=/opt/spark/conf/metrics.properties"
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - "4040:8080"
       - "7077:7077"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/spark/metrics.properties:/opt/spark/conf/metrics.properties:ro
     command: "/opt/spark/bin/spark-class org.apache.spark.deploy.master.Master"
     restart: always
 
   spark-worker:
     container_name: spark-worker
     image: apache/spark:3.5.0
+    environment:
+      SPARK_WORKER_OPTS: "-Dspark.metrics.conf=/opt/spark/conf/metrics.properties"
     depends_on:
       spark-master:
         condition: service_started
     ports:
-      - "7001:7000"
+      - "7001:8081"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/spark/metrics.properties:/opt/spark/conf/metrics.properties:ro
     command: "/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077"
+    restart: always
+
+  loki:
+    image: grafana/loki:3.2.0
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: always
+
+  alloy:
+    image: grafana/alloy:v1.5.1
+    container_name: alloy
+    depends_on:
+      - loki
+    ports:
+      - "12345:12345"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow-logs:ro
+      - ${AIRFLOW_PROJ_DIR:-.}/spark-events:/opt/spark-events:ro
+      - ${AIRFLOW_PROJ_DIR:-.}/alloy.conf:/etc/alloy/config.alloy:ro
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    restart: always
+
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    restart: always
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    depends_on:
+      - loki
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ${AIRFLOW_PROJ_DIR:-.}/grafana/dashboards:/var/lib/grafana/dashboards:ro
     restart: always
 
   airflow-webserver:
@@ -107,7 +169,8 @@ services:
       - -c
       - |
         mkdir -p /sources/logs /sources/reports
-        chown -R "${AIRFLOW_UID:-50000}:0" /sources/logs /sources/reports
+        mkdir -p /sources/spark-events
+        chown -R "${AIRFLOW_UID:-50000}:0" /sources/logs /sources/reports /sources/spark-events
         exec /entrypoint airflow version
     environment:
       <<: *airflow-common-env

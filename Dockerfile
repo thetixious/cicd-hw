@@ -11,7 +11,8 @@ RUN apt-get update \
 USER airflow
 RUN pip3 install --no-cache-dir \
     apache-airflow-providers-apache-spark==4.1.1 \
-    pyspark==3.5.0
+    pyspark==3.5.0 \
+    airflow-exporter==1.5.3
 
 COPY --chown=airflow:root dags/ /opt/airflow/dags/
 COPY --chown=airflow:root spark/ /opt/airflow/spark/

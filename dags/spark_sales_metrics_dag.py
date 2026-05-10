@@ -21,5 +21,9 @@ with DAG(
         application_args=["{{ ds }}"],
         name="sales_metrics_spark_job",
         conn_id="spark_local",
+        conf={
+            "spark.eventLog.enabled": "true",
+            "spark.eventLog.dir": "file:///opt/airflow/spark-events",
+        },
         verbose=True,
     )

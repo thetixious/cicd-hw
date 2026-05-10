@@ -40,6 +40,75 @@ volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/cache"]
 
 После push ветки pipeline можно проверить в GitLab: `CI/CD -> Pipelines`.
 
+## ЛР 4. Loki + Prometheus + Grafana
+
+В ветке `hw4` к стенду Airflow + Spark добавлен observability-слой: Loki, Alloy, Prometheus и Grafana.
+
+Ссылка на GitLab: https://gitlab.com/tix_pix/cicd-course/-/tree/hw4?ref_type=heads
+
+Состав решения:
+
+- `alloy.conf` собирает Airflow task logs из `logs/` и Spark event logs из `spark-events/`, затем отправляет их в Loki.
+- `prometheus.yml` настраивает сбор метрик с Airflow webserver, Spark master и Spark worker.
+- `spark/metrics.properties` включает Prometheus servlet для Spark master и worker.
+- `Dockerfile` устанавливает `airflow-exporter`, чтобы Airflow отдавал Prometheus-метрики на `/admin/metrics/`.
+- `docker-compose.yml` поднимает сервисы `loki`, `alloy`, `prometheus` и `grafana`.
+- `grafana/provisioning/datasources/datasources.yml` автоматически подключает Prometheus и Loki как datasources.
+- `grafana/provisioning/dashboards/dashboards.yml` и `grafana/dashboards/lab4-observability.json` автоматически создают dashboard `Lab 4 Observability` с двумя панелями.
+- DAG `spark_sales_metrics` включает Spark event logging и пишет event logs в `spark-events/`.
+
+### Локальная проверка ЛР 4
+
+Перед запуском создайте локальные директории и `.env`:
+
+```bash
+echo "AIRFLOW_UID=$(id -u)" > .env
+mkdir -p logs reports spark-events
+```
+
+Запустите стенд:
+
+```bash
+docker compose up -d --build
+```
+
+Основные UI:
+
+```text
+Airflow:    http://localhost:8080/
+Spark:      http://localhost:4040/
+Prometheus: http://localhost:9090/
+Loki:       http://localhost:3100/ready
+Alloy:      http://localhost:12345/
+Grafana:    http://localhost:3000/
+```
+
+Креды Airflow остаются стандартными:
+
+```text
+login: airflow
+password: airflow
+```
+
+Запустите Spark DAG:
+
+```bash
+docker compose exec airflow-scheduler airflow dags test spark_sales_metrics 2026-05-09
+```
+
+После успешного запуска:
+
+- в `spark-events/` должен появиться Spark event-log файл;
+- в Prometheus `Status -> Targets` должны быть targets `airflow`, `spark-master` и `spark-worker`;
+- в Grafana должен появиться dashboard `DevOps homework / Lab 4 Observability`;
+- dashboard содержит панель состояния Airflow/Spark targets из Prometheus и панель Spark event logs из Loki.
+
+Остановить стенд:
+
+```bash
+docker compose down
+```
+
 ## ЛР 2. Airflow + Spark
 
 В ветке `hw2` подготовлен локальный деплой Apache Airflow и Spark Standalone через Docker Compose.
